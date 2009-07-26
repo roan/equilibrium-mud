@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+<!-- Saved on Saturday, June 30, 2007, 10:48  -->
+<!-- MuClient version 4.13 -->
+
+<muclient>
+<plugin
+   name="equilibrium_map"
+   author="Nick Gammon"
+   id="86860b755a33469f5f1d1585"
+   language="Lua"
+   purpose="Redirects map messages to another pane"
+   date_written="2008-07-18"
+   requires="4.34"
+   version="1.0"
+   save_state="y"
+   >
+<description trim="y">
+Redirects the map to a mini window.
+</description>
+</plugin>
+
+<!--  Triggers  -->
+
+<triggers>
+  <trigger
+   enabled="y"
+   match="*-[Magie]-*"
+   script="map_redirect"
+   omit_from_output="n"
+   name="map_start"
+   sequence="100"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="n"
+   match="*"
+   script="map_redirect"
+   name="multi_line_map"
+   omit_from_output="n"
+   sequence="10"
+  >
+  </trigger>
+
+  <trigger
+   enabled="y"
+   match="*-[Armi]-*"
+   script="map_redirect"
+   omit_from_output="n"
+   name="map_end"
+   sequence="5"
+  >
+  </trigger>
+    
+  <trigger
+   enabled="n"
+   match="L'affitto ti costa 0 imperiali."
+   sequence="100"
+   send_to="12"
+  >
+  <send>SendNoEcho ("pra")</send>
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   match="^[\[\]A-Za-z0-9]+ (dice|chiacchierando|pisponde|sussurra|in ardesiano) .+"
+   regexp="y"
+   script="chat_redirect"
+   omit_from_output="n"
+   sequence="100"
+  >
+  </trigger>  
+</triggers>
+
+<aliases>
+  <alias
+   name="close_win"
+   script="close_win"
+   match="closewin"
+   enabled="y"
+   sequence="100"
+   ignore_case="y"
+  >
+  </alias>
+</aliases>
+<!--  Script  -->
+
+<script>
+<![CDATA[
+
+background_colour = 0 -- 0x00220E
+title_colour = 0x696969
+hyperlink_colour = 0x00FFFF
+lanciamagie = "cast"
+max_width = 44
+
+require "checkplugin"
+require "commas"
+
+map_lines = {}
+
+function close_win (name, line, wildcards)
+  WindowShow (win, false)
+end 
+
+function chat_redirect (name, line, wildcards, styles)
+  -- send_to_world (chat_world, styles)
+  WindowText (win.."chat", font_id, line, 0, 0, 0, 0, title_colour)
+end 
+
+function hyperlink_configure_background ()
+  local new_colour = PickColour (background_colour)
+  if new_colour ~= -1 then
+    background_colour = new_colour
+    Display_Map ()
+  end -- new colour
+   
+end -- hyperlink_configure_background
+
+function hyperlink_configure_title ()
+  local new_colour = PickColour (title_colour)
+  if new_colour ~= -1 then
+    title_colour = new_colour
+    Display_Map ()
+  end -- new colour
+   
+end -- hyperlink_configure_title
+
+function mousedown (flags, hotspotid)
+  local f = hyperlink_functions [hotspotid]
+  if f then
+    f (hotspotid)
+  end -- function found
+end -- mousedown
+
+hyperlink_functions = {}
+
+function make_hyperlink (text, id, left, top, action, hint)
+  local height = WindowFontInfo (win, font_id, 1)  
+  local right = left + WindowTextWidth (win, font_id, text)
+  local bottom = top + height
+
+  WindowAddHotspot(win, id,  
+                    left, top, right, bottom, 
+                   "", -- mouseover
+                   "", -- cancelmouseover
+                   "mousedown",
+                   "", -- cancelmousedown
+                   "", -- mouseup
+                   hint,                 
+                   1, 0)
+                   
+  WindowText (win, font_id, text, left, top, right, bottom, hyperlink_colour)               
+  hyperlink_functions [id] = action
+  return right
+end -- make_hyperlink       
+
+function on_emote (id) -- callback hyperlink
+  if id ~= "" then
+    Send (id.." "..GetCommand ())
+  end 
+end 
+
+function Display_Line (line, styles)
+  local id = font_id
+  local left = 2
+  local top =  (line - 1) * font_height + 5
+
+  for _, v in ipairs (styles) do
+    --v.text
+    if _ % 2 ~= 0 then
+      --left = left + WindowText (win, id, v.text, left, top, 0, 0, v.textcolour)
+      v.text = trim(string.gsub (v.text, "[\]()\-\[]", ""))
+      comando = v.text
+      if tipo == 'Magie' then
+        comando = lanciamagie.." '"..v.text.."'"
+      end
+      hyperlink_colour = v.textcolour  
+      make_hyperlink (v.text, comando, (_-1) * font_width * max_width / 4 + 2, top, on_emote, comando)
+    end
+    if v.text == 'Magie' or v.text == 'Abilita' then 
+      WindowText (win, id, v.text, left, top, 0, 0, v.textcolour)
+      tipo = v.text
+    end
+  end -- for each style run                 
+end -- Display_Line
+
+function Display_Map ()
+  local width = max_width * font_width + 10
+  local height = (#map_lines + 1) * font_height + 10
+  
+   -- recreate the window the correct size
+   check (WindowCreate (win, 
+                 0, 0,   -- left, top (auto-positions)
+                 width,     -- width
+                 height,  -- height
+                 6,       -- auto-position: top  right
+                 0,  -- flags
+                 background_colour) )
+   check (WindowCreate (win.."chat", 100, height, width, height, 6, 0, title_colour) )
+   -- DrawEdge rectangle
+   check (WindowRectOp (win, 5, 0, 0, 0, 0, 10, 15))
+   
+   WindowDeleteAllHotspots (win)
+     
+   -- title rectangle
+   check (WindowRectOp (win, 2, 2, 2, -2, font_height + 5, title_colour))
+   check (WindowRectOp (win, 5, 2, 2, -2, font_height + 5, 5, 8))
+ 
+   -- display each line        
+   for i, v in ipairs (map_lines) do
+      Display_Line (i+1, v)
+   end -- for           
+ 
+   make_hyperlink ("?", "back_colour", width-15, height-5-font_height, hyperlink_configure_background, "Choose background colour")
+   make_hyperlink ("?", "title_colour", width-15, 0, hyperlink_configure_title, "Choose title colour")
+            
+   left = 2           
+   left = make_hyperlink ("Pra ", "pra", left, 1, on_emote, "")
+   left = make_hyperlink ("Con ", "con", left, 1, on_emote, "")
+   left = make_hyperlink ("Ext ", "con ext", left, 1, on_emote, "")
+   left = make_hyperlink ("Eff ", "eff", left, 1, on_emote, "")
+   left = make_hyperlink ("Gru ", "Gru", left, 1, on_emote, "")
+   left = make_hyperlink ("Gua ", "Gua", left, 1, on_emote, "")
+   left = make_hyperlink ("Inv ", "inv", left, 1, on_emote, "")
+   left = make_hyperlink ("Equ ", "Equ", left, 1, on_emote, "")
+   left = make_hyperlink ("Liv ", "Liv", left, 1, on_emote, "")
+   left = make_hyperlink ("Abi ", "Abi", left, 1, on_emote, "")
+                       
+   -- show it now (or refresh)
+   WindowShow (win, true)
+end -- Display_Map
+
+-- map redirector
+function map_redirect (name, line, wildcards, styles)
+  EnableTrigger ("multi_line_map", true)  
+
+  if name == "map_start" then
+    map_lines = {}
+    max_width = 44
+    table.insert (map_lines, styles)
+  elseif name == "map_end" then
+    EnableTrigger ("multi_line_map", false)  
+    Display_Map ()
+  else
+      -- line = string.gsub (line, "\(.+\)", "")
+      -- local len = #line
+      table.insert (map_lines, styles)
+      -- max_width = math.max (max_width, len)
+  end 
+
+end -- function map_redirect 
+
+function OnPluginInstall ()
+  win = GetPluginID ()
+  
+  font_id = "map_font"  -- our internal name
+  font_id_bold = "map_font_bold"  -- our internal name
+  local fonts = utils.getfontfamilies ()
+  if fonts.Tahomaa then
+    font_size = 8
+    font_name = "Tahoma"    -- the actual font
+  else
+    font_size = 8
+    font_name = "Courier New"
+  end -- if 
+
+  -- make miniwindow so I can grab the font info
+  check (WindowCreate (win, 0, 0, 1, 1, 6, 0, background_colour) )
+
+  check (WindowFont (win, font_id, font_name, font_size, false, false, false, false, 0, 49))  -- normal
+  check (WindowFont (win, font_id_bold, font_name, font_size, false, false, false, false, 0, 49))   -- bold
+  
+  font_height = WindowFontInfo (win, font_id, 1) -  WindowFontInfo (win, font_id, 4) + 1 -- height
+  font_width = WindowFontInfo (win, font_id, 6)  -- avg width
+  
+  background_colour = tonumber (GetVariable ("background_colour")) or background_colour
+  title_colour = tonumber (GetVariable ("title_colour")) or title_colour
+  
+  if GetVariable ("enabled") == "false" then
+    ColourNote ("yellow", "", "Warning: Plugin " .. GetPluginName ().. " is currently disabled.")
+    check (EnablePlugin(GetPluginID (), false))
+    return
+  end -- they didn't enable us last time
+  
+  Display_Map ()
+end -- OnPluginInstall
+
+]]>
+</script>
+</muclient>

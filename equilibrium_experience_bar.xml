@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+<!-- Saved on martedì, luglio 21, 2009, 2:20  -->
+<!-- MuClient version 4.42 -->
+
+<muclient>
+<plugin
+   name="equilibrium_experience_bar"
+   author="Harl"
+   id="55da450b05064b4898efbdbf"
+   language="Lua"
+   purpose="Shows XP to level"
+   save_state="y"
+   date_written="2009-07-21 14:17:59"
+   requires="4.35"
+   version="1.0"
+   >
+<description trim="y">
+<![CDATA[
+based on Experience_Bar by Nick Gammon
+]]>
+</description>
+</plugin>
+
+<!--  Triggers  -->
+<triggers>
+  <trigger
+   enabled="y"
+   match=" (*) * exp  (*: *)"
+   script="update_livello"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   match="HP:* * Exp:* Oro:*"
+   script="do_prompt"
+   sequence="100"
+  >
+  </trigger>
+</triggers>
+
+<aliases>
+<alias
+	script="expbar"
+	match="^expbar(.*)$"
+	regexp="y"
+	enabled="y"
+	send_to="12"
+	ignore_case="y"
+	sequence="100"
+></alias>
+</aliases>
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+-- configuration
+
+GAUGE_HEIGHT = 11
+NUMBER_OF_TICKS = 20
+
+BACKGROUND_COLOUR = ColourNameToRGB "gray"
+BOX_COLOUR = ColourNameToRGB "dodgerblue"
+
+function expbar (name, line, match, styles)
+  if match[1] == " off" then
+    WindowShow (win, false)
+    return
+  end
+  SendNoEcho ("level")
+end
+
+function do_prompt (name, line, match, styles)
+  -- CHANGE HERE if your prompt is different (eg. different wildcard numbers)
+  -- (string.gsub removes commas from the experience figures, if necessary)
+  -- current_xp = tonumber ((string.gsub (match [4], ",", "")))
+  -- max_xp = tonumber ((string.gsub (match [5], ",", ""))) + (current_xp or 0)
+  SetVariable ("exp_left", match[3]-0)
+  SetVariable ("exp_curr", GetVariable("lvl_expn") - match[3])
+  draw_bar ()  
+end -- do_prompt
+
+function update_livello (name, line, match, styles)
+  if match[3] == "Tu Hai" then
+  	SetVariable ("lvl_curr", match[1]-0)
+  	SetVariable ("lvl_expc", match[2]-0)
+  	SetVariable ("exp_curr", match[4]-0)
+  elseif match[3] == "Al Livello" then 
+  	SetVariable ("lvl_next", match[1]-0)
+  	SetVariable ("lvl_expn", match[2]-0)
+  	SetVariable ("exp_left", match[4]-0)
+	draw_bar()
+  end
+end
+
+win = GetPluginID ()  -- get a unique name
+
+function draw_bar ()
+  -- width is window width minus 2
+  local gauge_width = GetInfo (281) - 2
+
+  -- make room for the bar
+  local bottom_margin = GetInfo (275)
+ 
+  -- adjust text rectangle, keeping existing settings where possible
+  if bottom_margin == 0 or (bottom_margin < 0 and math.abs (bottom_margin) < (GAUGE_HEIGHT + 2)) then
+    TextRectangle(GetInfo (272), GetInfo (273), -- left, top
+                  GetInfo (274), -- right
+                  - (GAUGE_HEIGHT + 2),  -- bottom (gauge height plus 2 more)
+                  GetInfo (276), GetInfo (282) or 0, GetInfo (277),  --  BorderOffset, BorderColour, BorderWidth
+                  GetInfo (278), GetInfo (279)) -- OutsideFillColour, OutsideFillStyle
+  end -- if
+
+  -- make the miniwindow
+  WindowCreate (win, 
+             0, 0,   -- left, top (auto-positions)
+             gauge_width,     -- width
+             GAUGE_HEIGHT,  -- height
+             10,       -- auto-position: bottom left
+             0,  -- flags
+             BACKGROUND_COLOUR) 
+  
+  WindowRectOp (win, 2, 0, 0, 0, 0, BACKGROUND_COLOUR)  -- fill entire box
+ 
+  -- how far through the level we are 
+  local done = (GetVariable ("exp_curr") - GetVariable ("lvl_expc")) / (GetVariable ("lvl_expn") - GetVariable ("lvl_expc"))
+  local bar_width = gauge_width * done
+ 
+  -- box size must be > 0 or WindowGradient fills the whole thing 
+  if math.floor (bar_width) > 0 then
+    
+    -- top half
+    WindowGradient (win, 0, 0, 
+                    bar_width, GAUGE_HEIGHT / 2, 
+                    0x000000,  -- black
+                    BOX_COLOUR, 
+                    2)   -- vertical gradient
+    
+    -- bottom half
+    WindowGradient (win, 0, GAUGE_HEIGHT / 2, 
+                    bar_width, 0, 
+                    BOX_COLOUR,
+                    0x000000,  -- black
+                    2)   -- vertical gradient
+
+  end -- any experience to speak of
+
+  -- show ticks
+  local ticks_at = gauge_width / NUMBER_OF_TICKS
+  
+  -- ticks
+  for i = 1, NUMBER_OF_TICKS do
+    WindowLine (win, i * ticks_at, 0, i * ticks_at, GAUGE_HEIGHT, ColourNameToRGB ("silver"), 0, 1)
+  end -- for
+
+  -- draw a box around it
+  check (WindowRectOp (win, 1, 0, 0, 0, 0, ColourNameToRGB ("lightgrey")))  -- frame entire box
+    
+  -- ensure window visible
+  WindowShow (win, true)
+end
+
+function OnPluginWorldOutputResized ()
+  draw_bar ()
+end -- function
+ 
+-- hide window on removal
+function OnPluginClose ()
+  WindowShow (win,  false)  -- hide it
+end -- OnPluginClose
+
+-- hide window on disable
+function OnPluginDisable ()
+  WindowShow (win,  false)  -- hide it
+end -- OnPluginDisable
+
+]]>
+</script>
+
+
+<!--  Plugin help  -->
+
+<aliases>
+  <alias
+   script="OnHelp"
+   match="equilibrium_experience_bar:help"
+   enabled="y"
+  >
+  </alias>
+</aliases>
+
+<script>
+<![CDATA[
+function OnHelp ()
+  world.Note (world.GetPluginInfo (world.GetPluginID (), 3))
+end
+]]>
+</script> 
+
+</muclient>
